@@ -20,16 +20,10 @@ function! vimtex#view#zathura#new() abort " {{{1
     endif
   endif
 
-  " Check if the xdotool is available
-  if !executable('xdotool')
-    call vimtex#log#warning('Zathura requires xdotool for forward search!')
-  endif
-
   "
   " Use the xwin template
   "
-  return vimtex#view#common#apply_xwin_template('Zathura',
-        \ vimtex#view#common#apply_common_template(deepcopy(s:zathura)))
+  return vimtex#view#common#apply_common_template(deepcopy(s:zathura))
 endfunction
 
 " }}}1
@@ -57,9 +51,38 @@ function! s:zathura.start(outfile) dict abort " {{{1
   let l:cmd .= ' ' . vimtex#util#shellescape(a:outfile)
   let self.process = vimtex#process#start(l:cmd)
 
-  call self.xwin_get_id()
   let self.outfile = a:outfile
 endfunction
+
+function! s:zathura.exists() dict abort " {{{1
+  let pid = self.get_pid()
+  return !empty(pid)
+endfunction
+
+function! s:zathura.view(file) dict abort " {{{1
+  if empty(a:file)
+    let outfile = self.out()
+  else
+    let outfile = a:file
+  endif
+  if vimtex#view#common#not_readable(outfile)
+    return
+  endif
+
+  if self.exists()
+    call self.forward_search(outfile)
+  else
+    if g:vimtex_view_use_temp_files
+      call self.copy_files()
+    endif
+    call self.start(outfile)
+  endif
+
+  if has_key(self, 'hook_view')
+    call self.hook_view()
+  endif
+endfunction
+
 
 " }}}1
 function! s:zathura.forward_search(outfile) dict abort " {{{1
@@ -97,12 +120,12 @@ function! s:zathura.compiler_callback(status) dict abort " {{{1
     "
     if !has_key(self, 'started_through_callback')
       for l:dummy in range(30)
+        if self.exists() | break | endif
         sleep 50m
-        if self.xwin_exists() | break | endif
       endfor
     endif
 
-    if !self.xwin_exists() && !has_key(self, 'started_through_callback')
+    if !self.exists() && !has_key(self, 'started_through_callback')
       call self.start(self.out())
       let self.started_through_callback = 1
     endif
